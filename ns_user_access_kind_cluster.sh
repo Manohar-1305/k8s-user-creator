@@ -2,7 +2,7 @@
 set -e
 
 USER="$1"
-NAMESPACE="dev"
+NAMESPACE="$2"
 KIND_CONTAINER="multi-node-cluster-control-plane"
 OUTPUT_DIR="./$USER"
 
