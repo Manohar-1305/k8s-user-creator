@@ -73,3 +73,5 @@ kubectl create clusterrolebinding "$USER-cluster-admin-binding" \
 echo "🎉 User '$USER' created with full cluster-admin access!"
 echo "📄 Kubeconfig saved locally at: $KUBECONFIG_FILE"
 echo "➡️  You can now copy this kubeconfig file to your laptop manually."
+# Set kubeconfig file permission to read/write only for the owner
+chmod 777 "$KUBECONFIG_FILE"
