@@ -1,49 +1,54 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
+# Arguments
 USER="$1"
 NAMESPACE="$2"
 EMAIL="$3"
+
+# Constants
 KIND_CONTAINER="multi-node-cluster-control-plane"
 OUTPUT_DIR="./$USER"
 
+# Check for required arguments
 if [[ -z "$USER" || -z "$NAMESPACE" || -z "$EMAIL" ]]; then
   echo "Usage: $0 <username> <namespace> <email>"
   exit 1
 fi
 
-echo "👤 Creating user: $USER for namespace: $NAMESPACE"
+echo "👤 Creating Kubernetes user '$USER' with access restricted to namespace '$NAMESPACE'."
 mkdir -p "$OUTPUT_DIR"
 
-# Check if Kind container is running
+# Check if the Kind control plane container is running
 if ! docker ps --format '{{.Names}}' | grep -q "^${KIND_CONTAINER}$"; then
-  echo "❌ Kind control plane container '$KIND_CONTAINER' not found!"
+  echo "❌ Kind control plane container '$KIND_CONTAINER' is not running. Please start your kind cluster."
   exit 1
 fi
 
-# Generate key and CSR
+echo "🔐 Generating private key and Certificate Signing Request (CSR) for user '$USER'..."
 openssl genrsa -out "$OUTPUT_DIR/$USER.key" 2048
-openssl req -new -key "$OUTPUT_DIR/$USER.key" -out "$OUTPUT_DIR/$USER.csr" -subj "/CN=$USER/O=$NAMESPACE-user"
+openssl req -new -key "$OUTPUT_DIR/$USER.key" -out "$OUTPUT_DIR/$USER.csr" -subj "/CN=$USER/O=${NAMESPACE}-user"
 
-# Copy CSR to container
+echo "📋 Copying CSR to Kind container '$KIND_CONTAINER' and signing certificate..."
 docker cp "$OUTPUT_DIR/$USER.csr" "$KIND_CONTAINER:/var/tmp/$USER.csr"
-
-# Sign CSR inside the Kind container
 docker exec "$KIND_CONTAINER" openssl x509 -req -in "/var/tmp/$USER.csr" \
   -CA /etc/kubernetes/pki/ca.crt \
   -CAkey /etc/kubernetes/pki/ca.key \
   -CAcreateserial \
   -out "/var/tmp/$USER.crt" -days 365
 
-# Copy signed cert back
+echo "📥 Retrieving signed certificate from Kind container..."
 docker cp "$KIND_CONTAINER:/var/tmp/$USER.crt" "$OUTPUT_DIR/$USER.crt"
 
-# Get cluster info
+echo "🔧 Preparing kubeconfig file..."
+
+# Extract cluster info from current context
 CLUSTER_NAME=$(kubectl config view --minify -o jsonpath='{.clusters[0].name}')
 CLUSTER_SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
-kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' | base64 -d > "$OUTPUT_DIR/ca.crt"
 
-# Generate kubeconfig
+# Extract CA cert
+kubectl config view --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' | base64 -d > "$OUTPUT_DIR/ca.crt"
+
 KUBECONFIG_FILE="$OUTPUT_DIR/$USER.kubeconfig"
 
 kubectl config --kubeconfig="$KUBECONFIG_FILE" set-cluster "$CLUSTER_NAME" \
@@ -63,7 +68,7 @@ kubectl config --kubeconfig="$KUBECONFIG_FILE" set-context "$USER-context" \
 
 kubectl config --kubeconfig="$KUBECONFIG_FILE" use-context "$USER-context"
 
-# Restrict RBAC to namespace
+echo "🔐 Creating RBAC Role and RoleBinding for user '$USER' in namespace '$NAMESPACE'..."
 kubectl create role "$USER-role" \
   --verb=get,list,watch,create,update,patch,delete \
   --resource=pods,services,deployments,secrets \
@@ -74,50 +79,58 @@ kubectl create rolebinding "$USER-binding" \
   --user="$USER" \
   --namespace="$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
-# Set file permission
 chmod 600 "$KUBECONFIG_FILE"
 
-# Prepare email body
+echo "✉️ Preparing email to send kubeconfig to '$EMAIL'..."
+
 EMAIL_BODY=$(cat <<EOF
 Hi $USER,
 
-Your kubeconfig file for accessing the Kubernetes cluster namespace 'dev' is attached to this email.
+Your Kubernetes access has been set up with the following details:
 
-To get started, please save the attached kubeconfig file to a secure location on your machine. For example, you can save it as:
+- Namespace: $NAMESPACE
+- Cluster: $CLUSTER_NAME
+- Server URL: $CLUSTER_SERVER
 
-  /home/ubuntu/manohar/alice.kubeconfig
+Attached to this email is your kubeconfig file, which contains the credentials and configuration required to access the Kubernetes cluster within your assigned namespace.
 
-Once saved, set the KUBECONFIG environment variable to point to this file by running the following command in your terminal:
+To use your kubeconfig:
 
-  export KUBECONFIG=/home/ubuntu/manohar/alice.kubeconfig
+1. Save the attached file securely on your local machine, for example:
+   $(pwd)/$USER.kubeconfig
 
-This will configure kubectl to use your kubeconfig file so you can interact with the Kubernetes cluster within the 'dev' namespace.
+2. Set the KUBECONFIG environment variable to point to this file by running:
 
-You can then run commands like:
+   export KUBECONFIG=$(pwd)/$USER.kubeconfig
 
-  kubectl get pods
-  kubectl get services
+3. You can now use kubectl to interact with resources in the '$NAMESPACE' namespace. For example:
 
-to manage resources in your assigned namespace.
+   kubectl get pods
+   kubectl get services
+   kubectl create deployment myapp --image=nginx
 
-If you need any assistance or encounter any issues, please feel free to reach out.
+Please keep your kubeconfig file private as it contains your authentication credentials.
 
-Best regards,  
+If you encounter any issues or have questions, please contact the Cluster Administrator.
+
+Best regards,
 Cluster Administrator
-
+EOF
 )
 
-# Write email body to temp file
+# Write the email body to a temp file
 EMAIL_BODY_FILE=$(mktemp)
 echo "$EMAIL_BODY" > "$EMAIL_BODY_FILE"
 
-# Send email with attachment using mpack + msmtp
-if ! mpack -s "Kubeconfig Access - $USER" -d "$EMAIL_BODY_FILE" "$KUBECONFIG_FILE" "$EMAIL"; then
-  echo "❌ Failed to send email to $EMAIL"
+# Send email with attachment using mpack
+if mpack -s "Kubeconfig Access - $USER" -d "$EMAIL_BODY_FILE" "$KUBECONFIG_FILE" "$EMAIL"; then
+  echo "✅ Email successfully sent to $EMAIL with kubeconfig attached."
+else
+  echo "❌ Failed to send email to $EMAIL."
   rm "$EMAIL_BODY_FILE"
   exit 1
 fi
 
 rm "$EMAIL_BODY_FILE"
 
-echo "✅ Email sent to $EMAIL with kubeconfig."
+echo "🎉 User creation and email notification complete!"
