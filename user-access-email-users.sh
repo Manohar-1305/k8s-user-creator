@@ -81,17 +81,30 @@ chmod 600 "$KUBECONFIG_FILE"
 EMAIL_BODY=$(cat <<EOF
 Hi $USER,
 
-Your kubeconfig file for accessing the Kubernetes cluster namespace '$NAMESPACE' is attached.
+Your kubeconfig file for accessing the Kubernetes cluster namespace 'dev' is attached to this email.
 
-To use it, save the attached kubeconfig file and run:
-  export KUBECONFIG=$(pwd)/$USER.kubeconfig
-Then use kubectl commands as usual within this namespace.
+To get started, please save the attached kubeconfig file to a secure location on your machine. For example, you can save it as:
 
-If you have any questions, contact the cluster administrator.
+  /home/ubuntu/manohar/alice.kubeconfig
 
-Regards,
-Cluster Admin
-EOF
+Once saved, set the KUBECONFIG environment variable to point to this file by running the following command in your terminal:
+
+  export KUBECONFIG=/home/ubuntu/manohar/alice.kubeconfig
+
+This will configure kubectl to use your kubeconfig file so you can interact with the Kubernetes cluster within the 'dev' namespace.
+
+You can then run commands like:
+
+  kubectl get pods
+  kubectl get services
+
+to manage resources in your assigned namespace.
+
+If you need any assistance or encounter any issues, please feel free to reach out.
+
+Best regards,  
+Cluster Administrator
+
 )
 
 # Write email body to temp file
