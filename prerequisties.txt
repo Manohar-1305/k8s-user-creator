@@ -1,0 +1,24 @@
+sudo apt update -y
+sudo apt install msmtp mpack ca-certificates
+sudo apt install mutt -y
+sudo ln -sf /usr/bin/msmtp /usr/sbin/sendmail
+
+vi /root/.msmtprc
+
+defaults
+auth on
+tls on
+tls_trust_file /etc/ssl/certs/ca-certificates.crt
+logfile /root/.msmtprc
+
+account default
+host smtp.gmail.com
+port 587
+from tradingcontentdrive@gmail.com
+user tradingcontentdrive@gmail.com
+password xrxlidugcicadkwg
+
+chmod 600 /root/.msmtprc
+
+# Test a sample mail
+mpack -s "Your Kubeconfig File" /root/.kube/config manohar.shetty507@gmail.com
