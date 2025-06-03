@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kubernetes Admin User Creator</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        margin: 0;
+        padding: 0;
+        background: #f9fafb;
+        color: #333;
+      }
+
+      header {
+        background: linear-gradient(to right, #1d4ed8, #2563eb);
+        color: white;
+        text-align: center;
+        padding: 2.5rem 1rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      header h1 {
+        margin: 0;
+        font-size: 2.2rem;
+      }
+
+      header p {
+        font-size: 1.1rem;
+        margin-top: 0.5rem;
+      }
+
+      main {
+        max-width: 1000px;
+        margin: 2rem auto;
+        padding: 1rem;
+      }
+
+      section {
+        background: white;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+        transition: transform 0.3s ease;
+      }
+
+      section:hover {
+        transform: scale(1.01);
+      }
+
+      section h2 {
+        color: #1e3a8a;
+        margin-top: 0;
+        display: flex;
+        align-items: center;
+        font-size: 1.4rem;
+      }
+
+      section h2::before {
+        content: "🛠️";
+        margin-right: 0.5rem;
+        font-size: 1.3rem;
+      }
+
+      section:nth-of-type(1) h2::before {
+        content: "📝";
+      }
+      section:nth-of-type(2) h2::before {
+        content: "⚙️";
+      }
+      section:nth-of-type(3) h2::before {
+        content: "🔐";
+      }
+      section:nth-of-type(4) h2::before {
+        content: "📦";
+      }
+      section:nth-of-type(5) h2::before {
+        content: "📄";
+      }
+      section:nth-of-type(6) h2::before {
+        content: "🛡️";
+      }
+      section:nth-of-type(7) h2::before {
+        content: "✉️";
+      }
+      section:nth-of-type(8) h2::before {
+        content: "✅";
+      }
+
+      p,
+      li {
+        font-size: 1rem;
+        line-height: 1.6;
+      }
+
+      ul {
+        padding-left: 1.2rem;
+        margin-bottom: 1rem;
+      }
+
+      code {
+        background: #e5e7eb;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.95rem;
+        font-family: Consolas, monospace;
+        display: inline-block;
+      }
+
+      pre {
+        background: #f3f4f6;
+        padding: 1rem;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin-top: 0.5rem;
+      }
+
+      footer {
+        text-align: center;
+        padding: 2rem 1rem;
+        font-size: 0.95rem;
+        color: #555;
+        background: #f1f5f9;
+        margin-top: 2rem;
+      }
+
+      @media (max-width: 600px) {
+        header h1 {
+          font-size: 1.6rem;
+        }
+
+        section {
+          padding: 1.2rem;
+        }
+
+        section h2 {
+          font-size: 1.2rem;
+        }
+
+        code,
+        pre {
+          font-size: 0.9rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>🚀 Kubernetes Admin User Creator</h1>
+      <p>Create and configure admin access to your cluster, step by step</p>
+    </header>
+
+    <main>
+      <section>
+        <h2>Step 1: Accept User Inputs</h2>
+        <p>Input two parameters:</p>
+        <ul>
+          <li><strong>Username:</strong> <code>admin-user</code></li>
+          <li><strong>Email:</strong> To send the kubeconfig file</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Step 2: Prepare the Environment</h2>
+        <p>We ensure Kind is running and setup folders like:</p>
+        <ul>
+          <li><code>kind-control-plane</code> container must be active</li>
+          <li><code>output/${USERNAME}</code> stores key, cert, and config</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Step 3: Generate Credentials</h2>
+        <ul>
+          <li><code>openssl genrsa -out ${USERNAME}.key 2048</code></li>
+          <li>
+            <code
+              >openssl req -new -key ${USERNAME}.key -out ${USERNAME}.csr -subj
+              "/CN=${USERNAME}/O=system:masters"</code
+            >
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Step 4: Sign CSR Inside Kind</h2>
+        <ol>
+          <li>Copy CSR to container</li>
+          <li>Sign using Kubernetes CA:</li>
+        </ol>
+        <pre><code>
+openssl x509 -req \
+-in /${USERNAME}.csr \
+-CA /etc/kubernetes/pki/ca.crt \
+-CAkey /etc/kubernetes/pki/ca.key \
+-CAcreateserial \
+-out /${USERNAME}.crt \
+-days 365
+    </code></pre>
+        <ol start="3">
+          <li>Copy signed cert back</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>Step 5: Create Kubeconfig</h2>
+        <pre><code>
+kubectl config set-cluster kind \
+--server=${K8S_SERVER} \
+--certificate-authority=ca.crt \
+--embed-certs=true \
+--kubeconfig=${USERNAME}-kubeconfig
+
+kubectl config set-credentials ${USERNAME} \
+--client-certificate=${USERNAME}.crt \
+--client-key=${USERNAME}.key \
+--embed-certs=true \
+--kubeconfig=${USERNAME}-kubeconfig
+
+kubectl config set-context ${USERNAME}@kind \
+--cluster=kind \
+--user=${USERNAME} \
+--kubeconfig=${USERNAME}-kubeconfig
+
+kubectl config use-context ${USERNAME}@kind --kubeconfig=${USERNAME}-kubeconfig
+    </code></pre>
+      </section>
+
+      <section>
+        <h2>Step 6: Grant Admin Access</h2>
+        <p>Bind the user to the <code>cluster-admin</code> role:</p>
+        <code
+          >kubectl create clusterrolebinding ${USERNAME}-admin-binding
+          --clusterrole=cluster-admin --user=${USERNAME}</code
+        >
+      </section>
+
+      <section>
+        <h2>Step 7: Email the Config</h2>
+        <ul>
+          <li>Subject: <code>Your Kubernetes Admin Kubeconfig</code></li>
+          <li>Includes: instructions + <code>${USERNAME}-kubeconfig</code></li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Step 8: Done!</h2>
+        <p>User has full cluster access. Temporary files may be cleaned up.</p>
+      </section>
+    </main>
+
+    <footer>
+      &copy; 2025 Kubernetes Admin Creator | Built with ❤️ by ChatGPT
+    </footer>
+  </body>
+</html>

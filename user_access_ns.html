@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Kubernetes Namespace User Creator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #0077b6;
+      --secondary: #90e0ef;
+      --text: #333;
+      --background: #f0f8ff;
+      --card-bg: #fff;
+      --border-radius: 12px;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Roboto', sans-serif;
+      background: var(--background);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 0 1rem;
+    }
+
+    header {
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: white;
+      padding: 2rem 1rem;
+      text-align: center;
+      border-bottom: 4px solid #023e8a;
+      animation: fadeSlideDown 1s ease;
+    }
+
+    header h1 {
+      font-size: 2.5rem;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 2rem auto;
+      display: grid;
+      gap: 2rem;
+    }
+
+    .step-card {
+      background: var(--card-bg);
+      border-left: 6px solid var(--primary);
+      padding: 1.5rem 1.5rem 1rem;
+      border-radius: var(--border-radius);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+      animation: fadeIn 1s ease;
+    }
+
+    .step-card h2 {
+      font-size: 1.3rem;
+      color: var(--primary);
+      margin-bottom: 0.5rem;
+    }
+
+    .step-card p {
+      margin-bottom: 0.5rem;
+    }
+
+    .code-block {
+      background: #f4f4f4;
+      padding: 1rem;
+      border-radius: 8px;
+      font-family: monospace;
+      overflow-x: auto;
+      margin-top: 0.5rem;
+      margin-bottom: 0.5rem;
+      border-left: 4px solid var(--secondary);
+    }
+
+    footer {
+      text-align: center;
+      font-size: 0.9rem;
+      padding: 2rem 1rem;
+      color: #666;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeSlideDown {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media screen and (max-width: 600px) {
+      header h1 {
+        font-size: 1.8rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🚀 Kubernetes Namespace User Creator</h1>
+  <p>Create scoped users with secure access to specific namespaces</p>
+</header>
+
+<main class="container">
+
+  <div class="step-card">
+    <h2>1️⃣ Input Details</h2>
+    <p>Provide the <strong>username</strong>, <strong>namespace</strong>, and <strong>email address</strong> as inputs to the script:</p>
+    <div class="code-block">
+      ./create_user.sh john development john@example.com
+    </div>
+  </div>
+
+  <div class="step-card">
+    <h2>2️⃣ Verify Cluster Status</h2>
+    <p>Check if your Kubernetes cluster (e.g. Kind) is running properly:</p>
+    <div class="code-block">
+      docker ps | grep kind-control-plane
+    </div>
+  </div>
+
+  <div class="step-card">
+    <h2>3️⃣ Generate Credentials</h2>
+    <p>Create a private key and CSR (Certificate Signing Request) for the user. This ensures their identity is verifiable:</p>
+    <div class="code-block">
+      openssl genrsa -out john.key 2048<br>
+      openssl req -new -key john.key -out john.csr -subj "/CN=john/O=john"
+    </div>
+    <p>🔐 <strong>Why?</strong> The key/CSR pair uniquely identifies the user and is used to generate a valid certificate.</p>
+  </div>
+
+  <div class="step-card">
+    <h2>4️⃣ Sign the CSR in Kind</h2>
+    <p>Use the Kubernetes cluster's CA to sign the CSR and produce a valid user certificate:</p>
+    <div class="code-block">
+      docker cp john.csr kind-control-plane:/tmp/<br>
+      docker exec kind-control-plane openssl x509 -req -in /tmp/john.csr \<br>
+      -CA /etc/kubernetes/pki/ca.crt -CAkey /etc/kubernetes/pki/ca.key \<br>
+      -CAcreateserial -out /tmp/john.crt -days 365
+    </div>
+    <p>📜 <strong>Why?</strong> Only certificates signed by the cluster’s CA are trusted.</p>
+  </div>
+
+  <div class="step-card">
+    <h2>5️⃣ Build Kubeconfig</h2>
+    <p>Create a kubeconfig file that allows the user to interact with Kubernetes:</p>
+    <div class="code-block">
+      kubectl config set-cluster kind --server=https://127.0.0.1:6443 \<br>
+      --certificate-authority=ca.crt<br>
+      kubectl config set-credentials john --client-certificate=john.crt \<br>
+      --client-key=john.key<br>
+      kubectl config set-context john-context --cluster=kind \<br>
+      --user=john --namespace=development<br>
+      kubectl config use-context john-context
+    </div>
+    <p>🧩 <strong>Why?</strong> This configuration allows `kubectl` to authenticate and interact with the cluster on behalf of the user.</p>
+  </div>
+
+  <div class="step-card">
+    <h2>6️⃣ Apply Namespace RBAC</h2>
+    <p>Create a Role and RoleBinding to limit access to a specific namespace:</p>
+    <div class="code-block">
+      kubectl apply -f - <<EOF<br>
+      apiVersion: rbac.authorization.k8s.io/v1<br>
+      kind: Role<br>
+      metadata:<br>
+        namespace: development<br>
+        name: dev-role<br>
+      rules:<br>
+        - apiGroups: ["", "apps", "batch"]<br>
+          resources: ["pods", "deployments", "jobs", "services"]<br>
+          verbs: ["get", "list", "create", "update", "delete"]<br>
+      EOF
+    </div>
+    <p>Create a RoleBinding for the user:</p>
+    <div class="code-block">
+      kubectl create rolebinding dev-binding --role=dev-role --user=john --namespace=development
+    </div>
+    <p>🔒 <strong>Why?</strong> Ensures the user can only access resources in <code>development</code> namespace.</p>
+  </div>
+
+  <div class="step-card">
+    <h2>7️⃣ Share Kubeconfig</h2>
+    <p>Send the generated kubeconfig file securely to the user:</p>
+    <div class="code-block">
+      mutt -s "Kubernetes Access" -a john.kubeconfig -- john@example.com
+    </div>
+    <p>✉️ <strong>Tip:</strong> Always share via secure channels like encrypted email or internal VPN.</p>
+  </div>
+
+</main>
+
+<footer>
+  &copy; 2025 Kubernetes Namespace Manager UI. Built with ❤️ for secure access.
+</footer>
+
+</body>
+</html>
